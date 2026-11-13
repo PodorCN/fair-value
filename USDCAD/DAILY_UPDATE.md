@@ -2,7 +2,8 @@
 
 The user will arrange the agent's daily schedule. This document is the job
 procedure, not a created hosted automation. One agent updates data; GitHub
-Actions publishes the static frontend after the push. No API server is needed.
+Actions deploys the static frontend to Cloudflare Pages after the push. No API
+server is needed. The custom domain is `fv.podor.org`.
 
 1. Read the repository and USDCAD `AGENT.MD` files. Start on a clean checkout
    tracking `origin/main`, then `git pull --ff-only`. If unrelated changes are
@@ -34,8 +35,9 @@ Actions publishes the static frontend after the push. No API server is needed.
    If staged changes exist, commit with `data: update USDCAD fair value` and
    `git push origin HEAD:main`. Never force-push. If the remote advanced, obtain
    the new data and rerun the calculation rather than merging generated JSON.
-6. Check the **Deploy fair-value dashboard** GitHub Actions run. It builds and
-   deploys `USDCAD/dist` as one GitHub Pages artifact. A new agent-pushed data
+6. Check the **Deploy fair-value dashboard to Cloudflare** GitHub Actions run.
+   It deploys `USDCAD/dist` to the project in `cloudflare.json`, then verifies
+   `https://fv.podor.org`. A new agent-pushed data
    commit triggers this automatically; frontend source does not need to change.
 7. Verify the published `data/dashboard.json` has the expected `generated_at`
    and `valuation_date`. Report the data date, source health and deployment URL.
@@ -43,7 +45,7 @@ Actions publishes the static frontend after the push. No API server is needed.
 The browser re-fetches config/data on load, manual refresh, and every five
 minutes, using cache-busting URLs. New dates extend the date selector and chart
 range automatically. A user viewing the latest observation follows new data;
-a pinned historical date stays pinned. GitHub Pages can cache files briefly,
+a pinned historical date stays pinned. Cloudflare can cache files briefly,
 so publication is measured by the deployed artifact and served payload.
 
 The manual **Update USDCAD fair value** workflow implements the same calculation

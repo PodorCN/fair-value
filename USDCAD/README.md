@@ -2,14 +2,15 @@
 
 A portfolio-manager dashboard using the final **revision 18 two-layer model**
 from `case-study/USDCAD`. The backend is a daily batch calculation run by an
-agent; GitHub Pages serves the frontend and its calculated JSON files.
+agent; Cloudflare Pages serves the frontend and its calculated JSON files at
+the requested custom domain `fv.podor.org`.
 
 ```
 Daily agent
     ↓ fetch public sources + calculate model
 USDCAD/data/observations.csv + dashboard.json + update-status.json
     ↓ commit and push to GitHub
-GitHub Actions → static build → GitHub Pages
+GitHub Actions → static build → Cloudflare Pages → fv.podor.org
     ↓ browser loads JSON; checks for updates every 5 minutes
 Current and historical valuation dashboard
 ```
@@ -53,8 +54,8 @@ and pushes the generated files. Only these change during a routine data update:
 - `USDCAD/data/dashboard.json`: precomputed valuation, history and portfolio data.
 - `USDCAD/data/update-status.json`: latest attempt's success, partial or failure.
 
-The **Deploy fair-value dashboard** workflow builds and publishes `USDCAD/dist`
-when frontend or data files are pushed to `main`. Its GitHub Pages deployment
+The **Deploy fair-value dashboard to Cloudflare** workflow publishes `USDCAD/dist`
+when frontend or data files are pushed to `main`. Its Cloudflare Pages deployment
 publishes webpage and data together. The project site uses relative URLs, so it
 works at `/fair-value/` without hard-coded root paths.
 
@@ -63,11 +64,23 @@ for the same calculation/commit process. Its completion also triggers Pages
 publication: GitHub does not emit ordinary push workflow events for commits
 created using `GITHUB_TOKEN`. Do not enable two concurrent daily data writers.
 
-In repository **Settings → Pages**, the build source is **GitHub Actions**.
-The deploy workflow uses `pages: write` and `id-token: write`. The data updater
-requires permission to commit to the branch; branch protection may require a
-repository-specific adaptation. Website hosting is separate from the agent's
-execution environment.
+Hosting metadata is in `cloudflare.json`: Pages project `podor-fair-value`,
+production branch `main`, zone `podor.org`, custom domain `fv.podor.org`.
+GitHub stores code and calculated data; GitHub Pages is not used.
+
+The deploy workflow uses the existing `CLOUDFLARE_API_TOKEN` repository secret
+(also accepts `CF_API_TOKEN`, `CLOUDFLARE_TOKEN` or `CF_TOKEN`). Its token needs
+Cloudflare Pages Edit on the account and Zone Read / DNS Edit for `podor.org`.
+The account ID is discovered from that zone; an optional
+`CLOUDFLARE_ACCOUNT_ID` secret or variable can constrain it. Never commit these
+credentials or send them to the frontend. If no credential is available, the
+workflow fails explicitly before creating a project or changing DNS.
+
+Deployment reuses or creates the Pages project, uploads the static bundle,
+associates the custom domain and adds its CNAME. It preserves unrelated DNS and
+TXT records and verifies that HTTPS serves the exact built snapshot. The data
+updater separately needs permission to commit to the branch; branch protection
+may require a repository-specific adaptation.
 
 ## Frontend behavior
 
@@ -108,11 +121,12 @@ Do not replace the production snapshot with a historical reconstruction.
 
 `npm run dev:api` still supports a separate development API at port 8000.
 `USDCAD_API_URL=https://YOUR-BACKEND.example npm run build` builds an API client
-without bundled data. These are optional and are not required for GitHub Pages.
+without bundled data. These are optional and are not required for static hosting.
 
-The default `npm run build` output also works on Cloudflare Pages: root directory
-`USDCAD`, build command `npm run build`, output `dist`. Leave `USDCAD_API_URL`
-unset for static publication. Never put secrets in a public config file.
+For Cloudflare Git integration instead of the included direct-upload workflow,
+use root directory `USDCAD`, build command `npm run build`, output `dist`.
+Leave `USDCAD_API_URL` unset for static publication. Keep a single deployment
+path active. Never put secrets in a public config file.
 
 ## Maintenance
 

@@ -13,7 +13,7 @@
     "update:cached": "python -m backend.update --cached",
     "watch": "python -m backend.update --watch",
     "api": "python -m backend.server",
-    "test": "python -m unittest discover -s tests -v && node --test frontend/*.test.mjs"
+    "test": "python -m unittest discover -s tests -v && node --test frontend/*.test.mjs scripts/*.test.mjs"
   },
   "devDependencies": {
     "linkedom": "0.18.15"
