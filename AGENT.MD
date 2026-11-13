@@ -1,14 +1,16 @@
 # Fair Value — agent maintenance instructions
 
 This repository hosts independently deployable currency fair-value monitors.
-The user requested source code here; deployment is a later step. Do not publish
-to a hosting account, place orders, or send notifications without authorization.
+The user selected a daily agent batch calculation followed by static GitHub
+Pages publication. Maintain that architecture. Do not place orders or send
+notifications without authorization.
 
 ## Structure and boundaries
 
 - Each instrument lives in its own folder. Start with `USDCAD/AGENT.MD`.
 - Keep data acquisition and all model computations in the backend. Frontends
-  consume versioned, precomputed JSON and can be hosted on Cloudflare Pages.
+  consume versioned, precomputed JSON on GitHub Pages. Cloudflare Pages remains
+  compatible with the same static build; no always-on API host is required.
 - Preserve selected research specifications. Do not optimize, add predictive
   models, or silently change thresholds when maintaining a watcher.
 - Keep API credentials out of Git, built static assets, and browser requests.

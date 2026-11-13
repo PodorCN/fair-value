@@ -1,0 +1,52 @@
+name: Deploy fair-value dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'USDCAD/**'
+      - '.github/workflows/deploy-pages.yml'
+  workflow_dispatch:
+  # Commits made with GITHUB_TOKEN do not emit a new push workflow event.
+  # Publish after the manual data-refresh workflow too, including failure status.
+  workflow_run:
+    workflows: ['Update USDCAD fair value']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Build static frontend with the agent's latest calculated data
+        working-directory: USDCAD
+        env:
+          USDCAD_API_URL: ''
+        run: npm run build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: USDCAD/dist
+      - name: Publish dashboard and JSON together
+        id: deployment
+        uses: actions/deploy-pages@v4

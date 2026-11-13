@@ -6,7 +6,9 @@ let data, config, range = '5', pinned = false, loading = false;
 const names = { usdcad: 'USD/CAD', wti: 'WTI crude', us2y: 'US 2Y yield', ca2y: 'Canada 2Y yield', vix: 'VIX', usd_broad: 'Broad USD', audusd: 'AUD/USD', nzdusd: 'NZD/USD', usdnok: 'USD/NOK', us_cpi: 'US CPI', ca_cpi: 'Canada CPI' };
 
 async function fetchJSON(url) {
-  const res = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
+  // GitHub Pages uses a CDN: a fresh URL also avoids a cached prior daily file.
+  const separator = url.includes('?') ? '&' : '?';
+  const res = await fetch(`${url}${separator}_=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(20000) });
   if (!res.ok) throw new Error(`Snapshot request failed (HTTP ${res.status}).`);
   return res.json();
 }
@@ -16,7 +18,7 @@ async function load() {
   loading = true;
   $('refresh').disabled = true;
   try {
-    config ??= await fetchJSON('./config.json');
+    config = await fetchJSON('./config.json');
     const next = await fetchJSON(config.dashboardUrl);
     if (next.schema_version !== 1 || !next.history?.length || !next.monthly?.length) throw new Error('Unsupported or incomplete snapshot.');
     data = next;

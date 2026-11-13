@@ -5,6 +5,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const python = process.env.USDCAD_PYTHON || 'python';
 const api = 'http://127.0.0.1:8000';
 const frontend = 'http://127.0.0.1:4173';
+const apiMode = process.argv.includes('--api');
 const children = new Set();
 let closing = false;
 
@@ -24,7 +25,7 @@ function launch(command, args, env = process.env) {
   });
   return child;
 }
-const build = launch(process.execPath, ['frontend/build.mjs'], { ...process.env, USDCAD_API_URL: api });
+const build = launch(process.execPath, ['frontend/build.mjs'], { ...process.env, USDCAD_API_URL: apiMode ? api : '' });
 const built = await new Promise(resolve => {
   build.once('error', () => resolve(false));
   build.once('exit', code => resolve(code === 0));
@@ -32,7 +33,7 @@ const built = await new Promise(resolve => {
 if (!built) { stop(1); } else {
   process.on('SIGINT', () => stop(0));
   process.on('SIGTERM', () => stop(0));
-  launch(python, ['-m', 'backend.server', '--port', '8000', '--cors-origin', frontend]);
+  if (apiMode) launch(python, ['-m', 'backend.server', '--port', '8000', '--cors-origin', frontend]);
   launch(python, ['-m', 'http.server', '4173', '--directory', 'dist', '--bind', '127.0.0.1']);
-  console.log(`Frontend ${frontend}\nBackend  ${api}/api/v1/dashboard\nRun npm run smoke in another terminal to verify the connection.`);
+  console.log(`Frontend ${frontend}\nData     ${apiMode ? `${api}/api/v1/dashboard` : `${frontend}/data/dashboard.json`}\nRun npm run smoke in another terminal to verify publication.`);
 }

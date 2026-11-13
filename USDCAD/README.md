@@ -1,141 +1,122 @@
 # USD/CAD Fair Value
 
-A portfolio-manager dashboard and an actual public-data watcher, implementing
-the final **revision 18 two-layer allocation** in `case-study/USDCAD`.
+A portfolio-manager dashboard using the final **revision 18 two-layer model**
+from `case-study/USDCAD`. The backend is a daily batch calculation run by an
+agent; GitHub Pages serves the frontend and its calculated JSON files.
 
-It shows aligned spot, BEER signal fair value and raw OLS fit, residual bands,
-PPP, historical scores, effective/pending/month-end model weights, a daily
-indication, driver attribution, decision history, coefficients and source health.
-The bundled historical calculation matches all 189 original monthly tier and
-weight records. Read [MODEL.md](MODEL.md) for formulas and timing limitations.
+```
+Daily agent
+    ↓ fetch public sources + calculate model
+USDCAD/data/observations.csv + dashboard.json + update-status.json
+    ↓ commit and push to GitHub
+GitHub Actions → static build → GitHub Pages
+    ↓ browser loads JSON; checks for updates every 5 minutes
+Current and historical valuation dashboard
+```
+
+No persistent API server is required. Frontend source stays the same when the
+agent publishes new data. It automatically extends chart/date ranges, updates
+latest metrics and preserves a user's pinned historical date.
 
 ## Run locally
 
-Requires Python 3.11+ and Node 20+. No frontend dependencies or API keys.
+Requires Python 3.11+ and Node 20+. No frontend runtime dependencies or source
+API keys. `linkedom` is used only for the automated frontend refresh test.
 
 ```bash
 cd /workspace/fair-value/USDCAD
 python -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
-python -m backend.update       # real fetch + complete recalculation
+npm ci --ignore-scripts
+python -m backend.update
 npm test
-npm run dev                   # frontend :4173 + independent API :8000
+npm run dev
 ```
 
-In another terminal:
+`npm run dev` builds the static site and serves it at `http://127.0.0.1:4173`.
+In another terminal, `npm run smoke` verifies that the site reads its published
+JSON. `npm run build` produces `dist/`; `npm run preview` serves an existing
+build. The browser needs HTTP, so do not open `index.html` with `file://`.
 
-```bash
-cd /workspace/fair-value/USDCAD
-npm run smoke                 # verifies frontend → backend, CORS, and last update
-```
+For an offline recalculation, `python -m backend.update --cached` uses bundled
+observations and visibly marks the result as cached. It is not a live update.
 
-To reproduce from bundled observations without network:
+## Agent updates and publication
 
-```bash
-python -m backend.update --cached
-```
+Read [DAILY_UPDATE.md](DAILY_UPDATE.md) for the complete daily agent procedure.
+The agent's schedule will be arranged by the user; no hosted agent automation is
+created here. The job fetches data, recalculates, checks the model, then commits
+and pushes the generated files. Only these change during a routine data update:
 
-This visibly marks the snapshot as cached; it is not a live refresh. Do not open
-`index.html` through `file://`, because the frontend fetches JSON over HTTP.
+- `USDCAD/data/observations.csv`: durable economic observations and availability.
+- `USDCAD/data/dashboard.json`: precomputed valuation, history and portfolio data.
+- `USDCAD/data/update-status.json`: latest attempt's success, partial or failure.
 
-## Frontend/backend separation
+The **Deploy fair-value dashboard** workflow builds and publishes `USDCAD/dist`
+when frontend or data files are pushed to `main`. Its GitHub Pages deployment
+publishes webpage and data together. The project site uses relative URLs, so it
+works at `/fair-value/` without hard-coded root paths.
 
-```
-FRED + BoC + StatCan
-         ↓
-Python update worker → observations + frozen calibration
-         ↓                      ↓
- full model recalculation → validated dashboard.json + update-status.json
-                                ↓
-                  static frontend OR read-only API
-```
+The **Update USDCAD fair value** workflow is a manually dispatchable fallback
+for the same calculation/commit process. Its completion also triggers Pages
+publication: GitHub does not emit ordinary push workflow events for commits
+created using `GITHUB_TOKEN`. Do not enable two concurrent daily data writers.
 
-`npm run dev` starts two independent processes: the frontend at
-`http://127.0.0.1:4173` and the Python API at `http://127.0.0.1:8000`.
-The frontend fetches the API over HTTP with explicit CORS. Its build contains
-no bundled market snapshots in this mode. Stop both processes with Ctrl+C.
+In repository **Settings → Pages**, the build source is **GitHub Actions**.
+The deploy workflow uses `pages: write` and `id-token: write`. The data updater
+requires permission to commit to the branch; branch protection may require a
+repository-specific adaptation. Website hosting is separate from the agent's
+execution environment.
 
-`backend/` owns all economics and model calculations. `frontend/` owns filtering,
-charts and formatting. It never fetches market providers or runs OLS. The build
-copies frontend files to `dist/`; API mode does not read or copy backend data.
-Chart clicks/date selection inspect history; CSV export downloads the decision
-ledger. “Refresh snapshot” reloads published results, not a privileged backend job.
-It polls for new snapshots every five minutes while open.
+## Frontend behavior
 
-For an always-running separate worker and API:
+The frontend reads `config.json`, `data/dashboard.json` and
+`data/update-status.json` on load, manual refresh and every five minutes while
+open. Every request bypasses cached prior URLs. No data-provider calls or model
+calculation happens in the browser. Market dates, source health and publication
+time remain visible; a failed agent run retains the last valid valuation and
+publishes its failure status.
 
-```bash
-python -m backend.update --watch --interval 3600
-python -m backend.server --host 0.0.0.0 --port 8000 \
-  --cors-origin https://YOUR-PROJECT.pages.dev
-```
-
-Serve that API through HTTPS behind your backend host/reverse proxy. It exposes
-only `GET /api/v1/dashboard` and `GET /api/v1/status`. There is no public update
-endpoint. Then build the frontend with:
-
-```bash
-USDCAD_API_URL=https://YOUR-BACKEND.example npm run build
-```
-
-The variable is a public backend URL, not a secret. CORS must match the
-frontend's exact origin. For the optional snapshot-only distribution,
-`npm run build && npm run preview` (without `USDCAD_API_URL`) bundles the
-already-calculated `dist/data/` snapshots instead.
-
-## Cloudflare Pages (prepared, not deployed)
-
-Connect this repository to Pages with these settings:
-
-| Setting | Value |
-|---|---|
-| Root directory | `USDCAD` |
-| Build command | `npm run build` |
-| Output directory | `dist` |
-| Node version | `24` (or 20+) |
-| Environment variable (API mode) | `USDCAD_API_URL=https://YOUR-BACKEND.example` |
-| Production branch | your chosen repository branch |
-
-Cloudflare Pages runs only the static build. It does not run the Python watcher.
-Use a separate backend host for the API, or choose the snapshot distribution:
-
-1. **Separate backend:** keep the worker/API on a Python host, use the API URL
-   build variable above, and the frontend refreshes without a Pages rebuild.
-2. **Git snapshot path:** the included GitHub Actions workflow runs the Python
-   backend on weekdays at 23:30 UTC, validates, and commits `USDCAD/data`.
-   Pages Git integration rebuilds when that commit arrives. The workflow is
-   also manually dispatchable and supports repository branches selected in GitHub.
-
-The Git workflow needs Actions enabled and workflow write permission on the
-target branch. Branch protection may require adapting the commit step to your
-repository policy. Once this workflow is on GitHub's default branch,
-its schedule can run there. Hosting the website still requires connecting a
-Pages project; pushing the repository does not deploy a backend service.
-
-At 23:30 UTC the schedule is 18:30 Toronto in winter and 19:30 in summer. FX and
-broad USD can still lag the latest daily rates. The page displays the actual
-common data date; it never labels a run timestamp as a current quote.
+The dashboard includes aligned spot, BEER signal fair value and raw OLS fit,
+residual dispersion bands, PPP, historical signals, effective/pending monthly
+model weights, daily indications, driver attribution, decision CSV export,
+annual coefficients and source health. The engine matches all 189 original
+monthly tier/weight records. Read [MODEL.md](MODEL.md) for formulas, sign
+conventions and research limitations.
 
 ## Failure and recovery
 
-- One source failure keeps its existing observations, publishes an explicitly
-  degraded snapshot, and exits 1. The scheduled workflow saves the result and
-  ends red so operational failure remains visible.
-- Total source failure or invalid calculation leaves the previous dashboard
-  unchanged; `update-status.json` records the failed attempt. The frontend shows
-  that failure even when it can still display the prior valuation.
-- Source staleness is independent of fetch success. Daily inputs over 7 business
-  days old, CPI over 65, and browser snapshots over 3 calendar days are flagged.
-- Atomic replacement prevents half-written JSON; a file lock prevents overlapping
-  local workers. No credentials, trading actions, or outbound alerts are required.
-- For reconstruction, use `python -m backend.update --cached --as-of 2020-03-31
-  --data-dir /path/to/copy-of-data`. Always copy the data folder first so a
-  reconstruction does not replace the production snapshot.
+A partial fetch publishes visibly degraded results and exits 1. A total source
+failure or invalid calculation preserves the previous dashboard and separately
+records the failed attempt. Publish the status file so readers can see the
+failure; do not pretend the retained valuation is new market data.
+
+Daily inputs more than 7 business days old, CPI more than 65, and snapshots more
+than 3 calendar days old are flagged. Successful HTTP requests alone do not
+establish data freshness. All nine market inputs use a common valuation date;
+newly fetched CPI released after that date enters a later valuation.
+
+Atomic file replacement and a file lock protect local calculations. No orders,
+credentials in the frontend, or external notifications are involved.
+
+For historical reconstruction, copy `data/` to a separate directory before
+using `python -m backend.update --cached --as-of YYYY-MM-DD --data-dir /copy`.
+Do not replace the production snapshot with a historical reconstruction.
+
+## Optional API and alternate hosting
+
+`npm run dev:api` still supports a separate development API at port 8000.
+`USDCAD_API_URL=https://YOUR-BACKEND.example npm run build` builds an API client
+without bundled data. These are optional and are not required for GitHub Pages.
+
+The default `npm run build` output also works on Cloudflare Pages: root directory
+`USDCAD`, build command `npm run build`, output `dist`. Leave `USDCAD_API_URL`
+unset for static publication. Never put secrets in a public config file.
 
 ## Maintenance
 
-Read [AGENT.MD](AGENT.MD). `npm test` verifies research parity, temporal isolation,
-annual refits, bands, tier boundaries, CPI revisions, failure recovery, API
-boundaries and frontend historical lookup. `npm run build` verifies a publishable
-static bundle. No runtime import or data read outside this folder is needed.
+Read [AGENT.MD](AGENT.MD). `npm test` verifies research parity, causality, source
+failure handling, historical lookup and an open page consuming new JSON while
+preserving historical selection. `npm run smoke` checks a served static build
+(or optional API mode). No sibling research checkout is needed at runtime.

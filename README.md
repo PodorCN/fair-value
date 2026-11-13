@@ -7,5 +7,7 @@ calculates each snapshot; the frontend is a separate static website.
   `case-study/USDCAD`, allocation revision 18.
 - [Repository agent instructions](AGENT.MD)
 
-The source is prepared for Cloudflare Pages. No hosting account is required to
-run locally, and no deployment has been performed.
+The backend is a once-daily agent batch job. It pushes calculated data to this
+repository; GitHub Pages publishes the static frontend and JSON together.
+Read [the daily agent procedure](USDCAD/DAILY_UPDATE.md). The same static output
+is compatible with Cloudflare Pages if the hosting destination changes later.

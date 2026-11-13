@@ -40,18 +40,23 @@ training hashes are in `data/provenance.json`. No sibling repo is required at ru
 3. Run `npm test`, then `npm run build`. Build does not perform network requests.
 4. For UI-only work `python -m backend.update --cached` recalculates existing
    observations with an explicit cache label. Never present this as fresh data.
-5. The scheduled GitHub workflow performs the same backend calculation and
-   commits data; a Git-integrated Pages project rebuilds on that commit. An
-   external API can instead serve the same schema without rebuilding the frontend.
+5. Follow `DAILY_UPDATE.md` to commit and push the three changed data files.
+   `.github/workflows/deploy-pages.yml` publishes the frontend and JSON together
+   after a data push. An existing open page refreshes the published JSON every
+   five minutes; do not bake model outputs into frontend source.
 
 All paths in the frontend must work at both a domain root and a subpath. Use no
 external CDN dependencies. All valuation arithmetic stays in Python; frontend
 filtering, number formatting, chart projection and CSV export are presentation.
 
-`npm run dev` must run a separate frontend (:4173) and API backend (:8000).
-API frontend builds must not bundle backend data or require it at build time.
-After changes to this boundary, run both services and `npm run smoke` to verify
-cross-origin HTTP requests, CORS, and absence of a static snapshot fallback.
+The primary backend is a once-daily batch job run by an agent. GitHub Pages
+serves the static frontend and calculated data, with no persistent API service.
+`npm run dev` previews this static publication. `npm run dev:api` retains the
+optional API mode for development; it is not required for deployment.
+After publication changes run `npm run smoke` against the preview and test that
+automatic refresh accepts a new snapshot while preserving a pinned history date.
+Do not create a new agent schedule unless the user requests it. The manual
+GitHub refresh workflow is a fallback, not a second daily scheduled writer.
 
 ## Verification and data honesty
 

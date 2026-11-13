@@ -2,8 +2,6 @@ name: Update USDCAD fair value
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '30 23 * * 1-5'
 
 permissions:
   contents: write
@@ -30,6 +28,7 @@ jobs:
         with:
           node-version: '24'
       - run: pip install -r requirements.txt
+      - run: npm ci --ignore-scripts
       - name: Fetch and recalculate (retain degraded/failure status)
         id: calculate
         continue-on-error: true
