@@ -1,0 +1,11 @@
+/*
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self' https: http://localhost:8000 http://127.0.0.1:8000; img-src 'self' data:; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
+/data/*
+  Cache-Control: no-store
+/config.json
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache

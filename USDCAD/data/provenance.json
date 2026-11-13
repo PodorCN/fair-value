@@ -1,0 +1,11 @@
+{
+  "bootstrap": "case-study/TDAM/usdcad_fv/data/processed/pit_store.parquet",
+  "paper": "case-study/USDCAD/main.tex",
+  "model": "allocation_rev18",
+  "research_commit": "8a52124da8cd7792467eabe5414d20cbcc1744df",
+  "observations_sha256": "0e6b767c04d883f364d607a79d4cf3b03e294342d68249e02e2efb1238351a76",
+  "training_sha256": "6af8bdc06e5c9743816f7a5a63ebbb6c2d969be60fd7a352f254ac3517870dc2",
+  "training_months": 480,
+  "bootstrap_data_through": "2026-10-16",
+  "history_caveat": "Research bootstrap preserves its publication rules and CPI vintages; frozen PPP calibration uses latest-vintage 1971\u20132010 CPI. Market history uses the paper\u2019s +1 business-day availability assumption, not strict H.10 release timing."
+}

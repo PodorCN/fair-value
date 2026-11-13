@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#f5f6f8">
+  <meta name="description" content="USDCAD valuation monitor: BEER fair value, PPP anchor and the revision 18 two-layer allocation.">
+  <title>USDCAD · Fair Value</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to dashboard</a>
+  <aside class="rail" aria-label="Navigation">
+    <a class="brand" href="#main" aria-label="Fair Value home">f<span>v</span><i>.</i></a>
+    <div class="rail-rule"></div>
+    <a class="rail-link active" href="#overview" aria-label="Valuation overview" title="Valuation overview">▥</a>
+    <a class="rail-link" href="#signals" aria-label="Signals" title="Signals">∿</a>
+    <a class="rail-link" href="#history" aria-label="Decision history" title="Decision history">◷</a>
+    <a class="rail-link" href="#methodology" aria-label="Model and data" title="Model and data">≡</a>
+    <span class="rail-bottom">FX</span>
+  </aside>
+  <div class="workspace">
+    <header class="topbar">
+      <div class="product">FAIR VALUE <span>/</span> <span class="muted">FX MONITOR</span></div>
+      <div class="top-actions"><span class="daily-tag">DAILY FIXINGS</span><span id="health" class="badge">Loading</span></div>
+    </header>
+    <main id="main">
+      <section id="overview" class="page-heading">
+        <div><div class="eyebrow">CURRENCY VALUATION <span class="dash">—</span> CANADA</div>
+          <h1>USD<span class="pair-slash">/</span>CAD <span class="pair-description">The valuation view.</span></h1>
+          <p class="subtitle">Macro fair value, a long-run anchor, and the portfolio implication.</p>
+        </div>
+        <div class="heading-actions">
+          <label class="asof-label" for="asof">VALUATION AS OF</label>
+          <div class="date-tools"><input id="asof" type="date" aria-label="Historical valuation date"><button id="latest" class="text-button" title="Return to latest valuation">Latest ↗</button></div>
+          <button id="refresh" class="refresh-button"><span aria-hidden="true">↻</span> Refresh snapshot</button>
+        </div>
+      </section>
+      <div id="load-state" class="load-state" role="status">Loading the published valuation…</div>
+      <div id="network-error" class="notice error" role="alert" hidden></div>
+      <div id="notices" aria-live="polite"></div>
+      <div id="dashboard" hidden>
+        <section class="metrics" aria-label="Valuation summary">
+          <article class="metric"><div class="metric-label">USD/CAD SPOT <span class="tiny-label">CAD per USD</span></div><div id="spot" class="metric-value">—</div><div id="spot-detail" class="metric-detail">—</div><div class="spark" id="spot-spark" aria-hidden="true"></div></article>
+          <article class="metric"><div class="metric-label"><span class="dot blue"></span> BEER FAIR VALUE <span class="info" title="Re-centered OLS fair value used by the selected signal">i</span></div><div id="fair" class="metric-value blue-text">—</div><div id="fair-detail" class="metric-detail">—</div><div class="spark" id="fair-spark" aria-hidden="true"></div></article>
+          <article class="metric"><div class="metric-label">VALUATION GAP <span class="tiny-label">spot / fair − 1</span></div><div id="gap" class="metric-value">—</div><div id="gap-detail" class="metric-detail">—</div><div class="gap-track"><span id="gap-position"></span></div></article>
+          <article class="metric"><div class="metric-label"><span class="dot amber"></span> PPP ANCHOR <span class="tiny-label">long run</span></div><div id="ppp" class="metric-value">—</div><div id="ppp-detail" class="metric-detail">—</div><div class="anchor-caption">1971–2010 calibration · frozen</div></article>
+        </section>
+        <div class="main-grid">
+          <section class="panel valuation-panel" aria-labelledby="valuation-title">
+            <div class="panel-heading"><div><div class="eyebrow">01 / VALUATION</div><h2 id="valuation-title">Price meets fundamentals</h2></div><div class="ranges" aria-label="Chart range"><button data-range="1" aria-pressed="false">1Y</button><button data-range="3" aria-pressed="false">3Y</button><button data-range="5" aria-pressed="true" class="selected">5Y</button><button data-range="all" aria-pressed="false">All</button></div></div>
+            <div class="chart-controls"><span class="legend-item"><span class="line ink"></span> USD/CAD</span><span class="legend-item"><span class="line blue-line"></span> BEER fair value</span><label><input type="checkbox" id="show-bands" checked> ±1σ band</label><label><input type="checkbox" id="show-ppp"> PPP</label><label><input type="checkbox" id="show-raw"> Raw OLS</label></div>
+            <div id="valuation-chart" class="chart-host" aria-label="Historical spot and fair value chart"></div>
+            <div class="chart-foot"><span id="chart-date-range">—</span><span>Hover to inspect <span class="foot-dot">·</span> Click to set historical date</span></div>
+            <div class="chart-note"><span class="dot blue"></span> Fair value includes the trailing residual mean used by the signal. Shading shows residual dispersion, not a confidence interval.</div>
+          </section>
+          <section class="panel allocation-panel" aria-labelledby="allocation-title">
+            <div class="panel-heading"><div><div class="eyebrow">02 / PORTFOLIO LENS</div><h2 id="allocation-title">The allocation</h2></div><span class="small-badge">REV 18</span></div>
+            <div class="allocation-kicker">MODEL WEIGHT IN EFFECT</div>
+            <div class="allocation-number"><span id="held-weight">—</span><span>USD</span><span id="held-cad">— CAD</span></div>
+            <div class="weight-bar"><span id="held-bar"></span><i title="50/50 benchmark"></i></div>
+            <div class="bar-labels"><span>USD</span><span>50/50 benchmark</span><span>CAD</span></div>
+            <p class="allocation-meta" id="held-meta">—</p>
+            <div class="layer-row"><div><span class="layer-symbol">1</span><span>BEER × PPP</span><small id="ppp-state">—</small></div><strong id="layer1-weight">—</strong></div>
+            <div class="layer-row"><div><span class="layer-symbol">2</span><span>Commodity peers</span><small>AUD / NZD / NOK</small></div><strong id="layer2-weight">—</strong></div>
+            <div class="preview-block"><div><span class="eyebrow">DAILY INDICATION</span><strong id="daily-weight">— USD</strong></div><p id="daily-description">—</p></div>
+            <div class="schedule"><span class="schedule-icon">◷</span><div id="schedule-detail">—</div></div>
+          </section>
+        </div>
+        <div class="secondary-grid" id="signals">
+          <section class="panel signal-panel"><div class="panel-heading"><div><div class="eyebrow">03 / SIGNALS</div><h2>Where the conviction comes from</h2></div><span class="tiny-label">+ score → buy USD</span></div>
+            <div class="signal-key"><span><span class="dot blue"></span> BEER score <strong id="beer-score">—</strong></span><span><span class="dot teal"></span> Peer score <strong id="peer-score">—</strong></span><span id="signal-date" class="muted">—</span></div>
+            <div id="signal-chart" class="chart-host small-chart" aria-label="Historical BEER and commodity peer allocation scores"></div>
+            <div class="peer-readings" id="peer-readings"></div>
+          </section>
+          <section class="panel driver-panel"><div class="panel-heading"><div><div class="eyebrow">04 / DRIVERS</div><h2>What moved fair value</h2></div><span class="small-badge">21 BD</span></div>
+            <p class="section-caption">Contribution to the latest raw OLS log fair-value change, in basis points.</p>
+            <div id="driver-rows"></div>
+            <div class="driver-total"><span>Total change <small id="refit-detail"></small></span><strong id="driver-total">—</strong></div>
+            <p class="driver-note" id="driver-date">—</p>
+          </section>
+        </div>
+        <section class="panel history-panel" id="history"><div class="panel-heading"><div><div class="eyebrow">05 / DECISION LEDGER</div><h2>From observation to allocation</h2></div><div class="history-actions"><label>Show <select id="history-count" aria-label="Number of monthly decisions"><option value="12">12 months</option><option value="36">36 months</option><option value="all">All history</option></select></label><button class="secondary-button" id="export">Export CSV ↓</button></div></div>
+          <div class="table-wrap"><table><thead><tr><th>Decision</th><th>Inputs through</th><th>Execution</th><th>Spot</th><th>BEER FV</th><th>BEER z</th><th>Peer score</th><th>Layer 1</th><th>Layer 2</th><th>USD weight</th></tr></thead><tbody id="history-body"></tbody></table></div>
+          <div class="table-footer">Month-end decisions use the previous business day's inputs; execution follows five business days later. Weights are model allocations, not actual holdings.</div>
+        </section>
+        <section class="panel method-panel" id="methodology"><div class="panel-heading"><div><div class="eyebrow">06 / MODEL & DATA</div><h2>A model you can trace</h2></div><span id="model-version" class="mono muted"></span></div>
+          <div class="method-grid"><div><h3>The selected specification</h3><p>Rolling 756-business-day OLS of log USD/CAD on the US–Canada 2Y spread, log WTI, VIX and log broad USD. Refit at business year-end; coefficients stay fixed between refits.</p><p>The BEER residual is re-centered and scaled over 252 business days. PPP shifts its tier outward on agreement, inward on opposition. Layer 2 grades the mean of three CAD cross z-scores. Each layer maps seven tiers to USD weights of 0%, 20%, 35%, 50%, 65%, 80%, 100%; the portfolio averages their weights.</p><div class="method-facts" id="method-facts"></div></div><div class="research-note"><h3>Valuation context, with limits</h3><p>The case study reports an information ratio of <strong>0.50</strong> for 2011–2026, falling to <strong>0.04</strong> from 2019 onward. After 261 tested variants, the deflated significance measure is 0.32.</p><p>Use this as a valuation tilt. PPP is a long-run anchor; the baseline does not apply the optional VIX stress filter.</p><p class="fine-print">These are the paper's reported results, not a new live backtest. Daily public fixings are not executable intraday quotes.</p></div></div>
+          <details><summary>Source health & publication timing <span id="source-summary"></span></summary><div class="table-wrap"><table><thead><tr><th>Input</th><th>Provider / series</th><th>Latest observation</th><th>Available from</th><th>Used observation</th><th>Value used</th><th>Status</th></tr></thead><tbody id="sources-body"></tbody></table></div><p class="data-policy" id="data-policy"></p></details>
+          <details><summary>Active coefficients & calibration</summary><div class="table-wrap"><table><thead><tr><th>Annual refit</th><th>Observations</th><th>Intercept</th><th>2Y spread</th><th>log WTI</th><th>VIX</th><th>log USD</th></tr></thead><tbody id="coefs-body"></tbody></table></div><p class="data-policy" id="calibration"></p></details>
+          <details><summary>Provenance & research limitations</summary><div id="provenance" class="data-policy"></div></details>
+        </section>
+        <footer class="footer"><span><strong>fv.</strong> A clearer view of currency value.</span><span id="published">—</span></footer>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

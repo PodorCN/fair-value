@@ -1,0 +1,17 @@
+{
+  "name": "usdcad-fair-value",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "build": "node frontend/build.mjs",
+    "preview": "python -m http.server 4173 --directory dist --bind 0.0.0.0",
+    "update": "python -m backend.update",
+    "update:cached": "python -m backend.update --cached",
+    "watch": "python -m backend.update --watch",
+    "api": "python -m backend.server",
+    "test": "python -m unittest discover -s tests -v && node --test frontend/app.test.mjs"
+  }
+}
