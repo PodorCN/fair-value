@@ -35,10 +35,11 @@ server is needed. The custom domain is `fv.podor.org`.
    If staged changes exist, commit with `data: update USDCAD fair value` and
    `git push origin HEAD:main`. Never force-push. If the remote advanced, obtain
    the new data and rerun the calculation rather than merging generated JSON.
-6. Check the **Deploy fair-value dashboard to Cloudflare** GitHub Actions run.
-   It deploys `USDCAD/dist` to the project in `cloudflare.json`, then verifies
-   `https://fv.podor.org`. A new agent-pushed data
-   commit triggers this automatically; frontend source does not need to change.
+6. The Cloudflare Pages GitHub integration builds the project named in
+   `cloudflare.json` and publishes it on the data push. The **Verify fair-value
+   dashboard** run re-runs the tests, waits for `https://fv.podor.org` to serve the
+   pushed `generated_at`, then runs the smoke test. A red run means the snapshot
+   never reached the domain, not that a deploy step was skipped.
 7. Verify the published `data/dashboard.json` has the expected `generated_at`
    and `valuation_date`. Report the data date, source health and deployment URL.
 
@@ -49,6 +50,8 @@ a pinned historical date stays pinned. Cloudflare can cache files briefly,
 so publication is measured by the deployed artifact and served payload.
 
 The manual **Update USDCAD fair value** workflow implements the same calculation
-and commit procedure when needed. Its completion also triggers Pages deployment,
-because GitHub suppresses push-triggered workflows for `GITHUB_TOKEN` commits.
-Do not enable two overlapping daily schedulers for the same data files.
+and commit procedure when needed. Its completion also triggers the verification
+workflow, because GitHub suppresses push-triggered workflows for `GITHUB_TOKEN`
+commits; the Cloudflare Pages integration receives that push independently and
+still publishes. Do not enable two overlapping daily schedulers for the same data
+files.

@@ -41,9 +41,12 @@ training hashes are in `data/provenance.json`. No sibling repo is required at ru
 4. For UI-only work `python -m backend.update --cached` recalculates existing
    observations with an explicit cache label. Never present this as fresh data.
 5. Follow `DAILY_UPDATE.md` to commit and push the three changed data files.
-   `.github/workflows/deploy-cloudflare.yml` publishes the frontend and JSON together
-   after a data push. An existing open page refreshes the published JSON every
-   five minutes; do not bake model outputs into frontend source.
+   The Cloudflare Pages GitHub integration on the project in `cloudflare.json`
+   builds the site and publishes the frontend and JSON together after a data
+   push. `.github/workflows/verify-publication.yml` only re-runs the tests and
+   proves that `https://fv.podor.org` serves the pushed snapshot. An existing open
+   page refreshes the published JSON every five minutes; do not bake model
+   outputs into frontend source.
 
 All paths in the frontend must work at both a domain root and a subpath. Use no
 external CDN dependencies. All valuation arithmetic stays in Python; frontend
@@ -59,12 +62,12 @@ Do not create a new agent schedule unless the user requests it. The manual
 GitHub refresh workflow is a fallback, not a second daily scheduled writer.
 
 Hosting target is `fv.podor.org`, configured in `cloudflare.json`. Keep GitHub as
-the source/data repository. Deployment uses a Cloudflare API token from Actions
-secrets, never from tracked files. Run `scripts/cloudflare.mjs prepare` to verify
-the zone/account and reuse or create the Pages project; `bind` adds the custom
-domain and its exact CNAME, preserving unrelated DNS and TXT records. Only claim
-the domain is live after HTTPS serves the exact built snapshot. If access is
-missing, report the failed deployment step; never fabricate a binding or URL status.
+the source/data repository: the Cloudflare Pages GitHub integration is the only
+publisher, so a data push is the deployment. No Cloudflare credential lives on the
+maintenance host or in Actions. `scripts/cloudflare.mjs prepare`/`bind` stay as
+one-off operator tools for a Pages/Zone token; never wire them back into CI. Only
+claim the domain is live after HTTPS serves the exact pushed snapshot. If access is
+missing, report the failed step; never fabricate a binding or URL status.
 
 ## Verification and data honesty
 

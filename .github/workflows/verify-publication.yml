@@ -1,0 +1,77 @@
+name: Verify fair-value dashboard
+
+# The Cloudflare Pages GitHub integration publishes USDCAD/dist on every push to
+# main; nothing here deploys. This workflow only re-runs the model/frontend tests
+# and proves that fv.podor.org serves the snapshot contained in the pushed commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'USDCAD/**'
+      - '.github/workflows/verify-publication.yml'
+  workflow_dispatch:
+  # GITHUB_TOKEN commits from the manual update workflow do not emit push events.
+  workflow_run:
+    workflows: ['Update USDCAD fair value']
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fair-value-verify
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'cancelled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: USDCAD
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - name: Model and frontend tests
+        run: npm test
+      - name: Build static bundle
+        env:
+          USDCAD_API_URL: ''
+        run: npm run build
+      - name: Wait for Cloudflare Pages to serve this commit
+        run: |
+          python3 - <<'PY'
+          import json, pathlib, sys, time, urllib.request
+
+          expected = json.loads(pathlib.Path("data/dashboard.json").read_text())["generated_at"]
+          url = "https://fv.podor.org/data/dashboard.json"
+          deadline = time.time() + 600
+          while time.time() < deadline:
+              try:
+                  # Cloudflare answers 403 to the default Python-urllib agent.
+                  req = urllib.request.Request(
+                      f"{url}?verify={int(time.time() * 1000)}",
+                      headers={"User-Agent": "fair-value-ci/1.0", "Cache-Control": "no-cache"},
+                  )
+                  with urllib.request.urlopen(req, timeout=30) as response:
+                      live = json.loads(response.read().decode())
+                  served = live.get("generated_at")
+                  if served == expected:
+                      print(f"fv.podor.org serves {served}")
+                      sys.exit(0)
+                  print(f"live is {served}, waiting for {expected}")
+              except Exception as exc:
+                  print(f"fetch failed: {exc!r}")
+              time.sleep(15)
+          print("timed out: the Pages deployment never served this commit", file=sys.stderr)
+          sys.exit(1)
+          PY
+      - name: Verify publication through the custom domain
+        env:
+          USDCAD_FRONTEND_URL: https://fv.podor.org
+        run: npm run smoke
