@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime, timezone
-import fcntl
 import hashlib
 import json
 import os
@@ -11,6 +10,12 @@ from pathlib import Path
 import sys
 import tempfile
 import time
+
+try:  # POSIX
+    import fcntl
+except ImportError:  # Windows: no flock; the lock is a one-byte msvcrt range lock.
+    fcntl = None
+    import msvcrt
 
 import numpy as np
 import pandas as pd
@@ -39,7 +44,9 @@ def clean(x):
 
 def atomic_write(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.NamedTemporaryFile(mode="w", dir=path.parent, delete=False) as f:
+    # newline="" keeps the bytes identical on Windows: no CRLF translation, so the
+    # published observations still hash to the value recorded in the snapshot.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="", dir=path.parent, delete=False) as f:
         temp = Path(f.name)
         try:
             f.write(content)
@@ -52,6 +59,18 @@ def atomic_write(path, content):
         os.replace(temp, path)
     finally:
         temp.unlink(missing_ok=True)
+
+
+def lock_exclusive(handle):
+    """Non-blocking exclusive lock on an open file; raises BlockingIOError if held."""
+    if fcntl is not None:
+        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return
+    handle.seek(0)
+    try:
+        msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError as exc:  # Windows reports contention as a generic OSError.
+        raise BlockingIOError(str(exc)) from exc
 
 
 def json_text(value):
@@ -152,7 +171,7 @@ def update(data_dir=ROOT / "data", live=True, as_of=None):
     data_dir.mkdir(parents=True, exist_ok=True)
     with (data_dir / ".update.lock").open("w") as lock:
         try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            lock_exclusive(lock)
         except BlockingIOError:
             raise RuntimeError("Another USDCAD update is already running")
         started = datetime.now(timezone.utc).isoformat()
@@ -166,7 +185,7 @@ def update(data_dir=ROOT / "data", live=True, as_of=None):
                 if not successes:
                     raise RuntimeError("All live sources failed; keeping last published snapshot: " + json.dumps(errors))
             snapshot = make_snapshot(obs, training, today, "live" if live else "cached", errors, successes, provenance)
-            raw = obs.to_csv(index=False)
+            raw = obs.to_csv(index=False, lineterminator="\n")
             snapshot["observations_sha256"] = hashlib.sha256(raw.encode()).hexdigest()
             body = json_text(snapshot)  # Validate all JSON before touching publication files.
             if len(snapshot["history"]) < 1000 or snapshot["latest"]["beer_fv"] <= 0:
