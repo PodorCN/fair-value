@@ -57,14 +57,26 @@ a pinned historical date stays pinned. Cloudflare can cache files briefly,
 so publication is measured by the deployed artifact and served payload.
 
 If Statistics Canada refuses the configured public WDS request with HTTP 403,
-retain the cached CPI observations and the explicit source error. Do not change
-the selected `v41690973` series, rebase the index, backdate first-seen values,
-rotate request identities or treat a cached calculation as source recovery.
-Permanent HTTP refusals fail immediately; only transient HTTP/network failures
-receive the existing bounded retry. Recovery requires a successful authorized
-read of that source (with observed reference dates), followed by the normal
-calculation, validation and publication procedure. A code/test pass does not
-establish that provider access has recovered.
+the adapter can read the identical `v41690973` through the Bank of Canada's
+official CPI_MONTHLY republication, explicitly linked on its CPI page. It checks
+the exact vector, monthly Total CPI index, `2002=100` units and reference dates;
+it does not use seasonally adjusted `V41690914` or percent changes. All 24 overlap
+months matched the retained observations when this route was verified on
+November 18, 2026. The active provider, download URL, retrieval time and original
+403 remain in the source row and `update-status.source_access`, plus a visible
+warning. Successful republication means this input was fetched, not that StatCan
+direct access recovered. Strict health still requires all eleven usable inputs
+and fresh valuation/source dates; a cached or failed mirror cannot pass.
+
+If republication fails or its identity/units/data cannot be verified, retain the
+cache and both failure causes, with a partial/failed result. Do not rebase,
+backdate first-seen values, solve the StatCan browser challenge or change request
+identities. Permanent HTTP refusals fail immediately; only transient HTTP/network
+failures receive bounded retry. A code/test pass does not prove live recovery.
+
+The fatal updater status has `result: "failed"` and a singular nonempty `error`;
+it has no source `errors` map, mode or valuation date. Publication verification
+allows the retained dashboard with this real schema, while source health fails.
 
 The manual **Update USDCAD fair value** workflow implements the same calculation
 and commit procedure when needed. Its completion also triggers the verification

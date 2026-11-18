@@ -113,7 +113,8 @@ def make_snapshot(obs, training, today, mode, errors, successes, provenance):
         used = used.iloc[-1]
         age = len(pd.bdate_range(r.obs_date, today)) - 1
         stale = age > (65 if name.endswith("cpi") else 7)
-        source_rows.append({**info, "name": name, "observation_date": r.obs_date, "available_date": r.available_date,
+        source_rows.append({**info, **obs.attrs.get("source_access", {}).get(name, {}),
+                            "name": name, "observation_date": r.obs_date, "available_date": r.available_date,
                             "value": r.value, "age_business_days": age,
                             "valuation_observation_date": used.obs_date,
                             "valuation_available_date": used.available_date, "valuation_value": used.value,
@@ -137,6 +138,11 @@ def make_snapshot(obs, training, today, mode, errors, successes, provenance):
         notices.append({"severity": "warning", "title": "Inputs are delayed", "detail": f"Common valuation date is {aligned_date.date()}, {lag} business days behind this run. Check source health before using the reading."})
     if errors:
         notices.append({"severity": "warning", "title": "Partial source failure", "detail": "Cached observations retained for: " + ", ".join(errors)})
+    for name, access in obs.attrs.get("source_access", {}).items():
+        notices.append({"severity": "warning", "title": "Official CPI republication",
+                        "detail": f"{name}: identical {SOURCE_INFO[name]['series_id']} index read from Bank of Canada; "
+                                  f"Statistics Canada direct access failed ({access['primary_error']}). "
+                                  "The original endpoint has not recovered. New or revised CPI values use first-fetch availability dates."})
     if row.layer1_tier * row.layer2_tier < 0:
         notices.append({"severity": "info", "title": "Layers disagree", "detail": "Macro valuation and commodity peers point in opposite directions; the selected model averages the two allocations."})
     if row.vix_z > 2:
@@ -193,6 +199,8 @@ def update(data_dir=ROOT / "data", live=True, as_of=None):
             status = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
                       "result": "partial" if errors else "success", "mode": snapshot["mode"],
                       "valuation_date": snapshot["valuation_date"], "errors": errors, "sources_fetched": successes}
+            if obs.attrs.get("source_access"):
+                status["source_access"] = obs.attrs["source_access"]
             if live:
                 atomic_write(data_dir / "observations.csv", raw)
             atomic_write(data_dir / "dashboard.json", body)

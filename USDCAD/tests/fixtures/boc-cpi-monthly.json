@@ -1,0 +1,169 @@
+{
+  "_provenance": {
+    "url": "https://www.bankofcanada.ca/valet/observations/group/CPI_MONTHLY/json?start_date=2024-11-01",
+    "read_at_utc": "2026-11-18T00:11:21.512888+00:00",
+    "raw_response_sha256": "58b0dd4376374bef5343966ca576b5050967ef2126ea65c551644feeb6daab7f",
+    "selection": "Only the exact total CPI index and its metadata; NSA identity crosschecked against official page separating V41690914 SA."
+  },
+  "seriesDetail": {
+    "V41690973": {
+      "label": "Total CPI",
+      "description": "The total Consumer Price Index (CPI) measures the average change over time in prices paid by Canadian consumers for a basket of goods and services. It is the primary inflation indicator, as published by Statistics Canada and tracked by the Bank of Canada.",
+      "dimension": {
+        "key": "d",
+        "name": "Date"
+      },
+      "dateFormat": "monthly",
+      "metadata": {
+        "unit": "Index (2002=100)",
+        "frequency": "Monthly"
+      }
+    }
+  },
+  "observations": [
+    {
+      "d": "2024-11-01",
+      "V41690973": {
+        "v": "161.8"
+      }
+    },
+    {
+      "d": "2024-12-01",
+      "V41690973": {
+        "v": "161.2"
+      }
+    },
+    {
+      "d": "2025-01-01",
+      "V41690973": {
+        "v": "161.3"
+      }
+    },
+    {
+      "d": "2025-02-01",
+      "V41690973": {
+        "v": "163.0"
+      }
+    },
+    {
+      "d": "2025-03-01",
+      "V41690973": {
+        "v": "163.5"
+      }
+    },
+    {
+      "d": "2025-04-01",
+      "V41690973": {
+        "v": "163.4"
+      }
+    },
+    {
+      "d": "2025-05-01",
+      "V41690973": {
+        "v": "164.3"
+      }
+    },
+    {
+      "d": "2025-06-01",
+      "V41690973": {
+        "v": "164.4"
+      }
+    },
+    {
+      "d": "2025-07-01",
+      "V41690973": {
+        "v": "164.9"
+      }
+    },
+    {
+      "d": "2025-08-01",
+      "V41690973": {
+        "v": "164.8"
+      }
+    },
+    {
+      "d": "2025-09-01",
+      "V41690973": {
+        "v": "164.9"
+      }
+    },
+    {
+      "d": "2025-10-01",
+      "V41690973": {
+        "v": "165.3"
+      }
+    },
+    {
+      "d": "2025-11-01",
+      "V41690973": {
+        "v": "165.4"
+      }
+    },
+    {
+      "d": "2025-12-01",
+      "V41690973": {
+        "v": "165.0"
+      }
+    },
+    {
+      "d": "2026-01-01",
+      "V41690973": {
+        "v": "165.0"
+      }
+    },
+    {
+      "d": "2026-02-01",
+      "V41690973": {
+        "v": "165.9"
+      }
+    },
+    {
+      "d": "2026-03-01",
+      "V41690973": {
+        "v": "167.4"
+      }
+    },
+    {
+      "d": "2026-04-01",
+      "V41690973": {
+        "v": "168.0"
+      }
+    },
+    {
+      "d": "2026-05-01",
+      "V41690973": {
+        "v": "169.6"
+      }
+    },
+    {
+      "d": "2026-06-01",
+      "V41690973": {
+        "v": "169.0"
+      }
+    },
+    {
+      "d": "2026-07-01",
+      "V41690973": {
+        "v": "169.9"
+      }
+    },
+    {
+      "d": "2026-08-01",
+      "V41690973": {
+        "v": "169.8"
+      }
+    },
+    {
+      "d": "2026-09-01",
+      "V41690973": {
+        "v": "170.0"
+      }
+    },
+    {
+      "d": "2026-10-01",
+      "V41690973": {
+        "v": "170.4"
+      }
+    }
+  ]
+}

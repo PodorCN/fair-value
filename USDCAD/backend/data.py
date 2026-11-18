@@ -6,8 +6,11 @@ the first successful fetch, so later releases cannot rewrite historical signals.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from io import StringIO
 import json
+import math
+import re
 import ssl
 import time
 from urllib.error import HTTPError, URLError
@@ -23,6 +26,9 @@ SOURCE_INFO = {**{k: {"provider": "FRED", "series_id": v,
                         "url": "https://www.bankofcanada.ca/valet/observations/BD.CDN.2YR.DQ.YLD/json"},
                "ca_cpi": {"provider": "Statistics Canada", "series_id": "v41690973",
                           "url": "https://www150.statcan.gc.ca/t1/tbl1/en/tv.action?pid=1810000401"}}
+STATCAN_CPI_URL = "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods"
+BOC_CPI_URL = "https://www.bankofcanada.ca/valet/observations/group/CPI_MONTHLY/json"
+BOC_CPI_PAGE = "https://www.bankofcanada.ca/rates/price-indexes/cpi/"
 
 
 def read_observations(path):
@@ -52,6 +58,47 @@ def request(url: str, payload=None):
             time.sleep(attempt + 1)
 
 
+def fetch_ca_cpi_mirror(start, today, primary_error):
+    """Official republication of the identical NSA index, not an alternate CPI.
+
+    The Bank's CPI page links CPI_MONTHLY and identifies V41690973 separately
+    from the seasonally adjusted V41690914 and the percent-change series.
+    Refuse unexpected metadata/units instead of silently changing the model.
+    """
+    url = f"{BOC_CPI_URL}?start_date={start}&end_date={today}"
+    rows = json.loads(request(url))
+    series = rows.get("seriesDetail", {}).get("V41690973", {})
+    if (series.get("label") != "Total CPI" or series.get("dateFormat") != "monthly"
+            or series.get("metadata", {}).get("unit") != "Index (2002=100)"
+            or series.get("metadata", {}).get("frequency") != "Monthly"):
+        raise ValueError("Bank of Canada CPI metadata does not identify v41690973 monthly NSA index (2002=100)")
+    points, seen = [], set()
+    for row in rows.get("observations", []):
+        date = row.get("d", "")
+        if not re.fullmatch(r"\d{4}-\d{2}-01", date) or date in seen:
+            raise ValueError("Bank of Canada CPI has invalid or duplicate reference months")
+        if pd.Timestamp(date) > pd.Timestamp(today):
+            raise ValueError("Bank of Canada CPI returned a future reference month")
+        seen.add(date)
+        value = float(row.get("V41690973", {}).get("v", "nan"))
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError("Bank of Canada CPI has a missing or invalid v41690973 value")
+        points.append({"obs_date": date, "value": value})
+    if not points:
+        raise ValueError("Bank of Canada CPI returned no observations")
+    df = pd.DataFrame(points).sort_values("obs_date").tail(24)
+    df.attrs["source_access"] = {
+        "provider": "Bank of Canada (Statistics Canada republication)",
+        "url": BOC_CPI_PAGE, "data_url": url,
+        "access_method": "official-republication", "mirror_series_id": "V41690973",
+        "unit": "Index (2002=100)", "frequency": "Monthly", "seasonal_adjustment": "NSA",
+        "original_provider": "Statistics Canada", "original_url": SOURCE_INFO["ca_cpi"]["url"],
+        "primary_endpoint": STATCAN_CPI_URL, "primary_error": primary_error,
+        "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+    }
+    return df
+
+
 def fetch(name, start, today):
     if name in FRED:
         url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={FRED[name]}&cosd={start}&coed={today}"
@@ -64,13 +111,27 @@ def fetch(name, start, today):
         code = "BD.CDN.2YR.DQ.YLD"
         rows = json.loads(request(f"https://www.bankofcanada.ca/valet/observations/{code}/json?start_date={start}&end_date={today}"))["observations"]
         df = pd.DataFrame([{"obs_date": r["d"], "value": float(r[code]["v"])} for r in rows if code in r and r[code].get("v")])
+    elif name == "ca_cpi":
+        try:
+            raw = request(STATCAN_CPI_URL, [{"vectorId": 41690973, "latestN": 24}])
+        except HTTPError as exc:
+            if exc.code != 403:
+                raise
+            primary_error = f"HTTPError: HTTP Error {exc.code}: {exc.reason}"
+            # This is a separately published, public official copy. Do not solve
+            # or bypass the StatCan browser challenge, spoof identity or rebase.
+            try:
+                df = fetch_ca_cpi_mirror(start, today, primary_error)
+            except Exception as mirror_error:
+                raise ValueError(f"StatCan direct {primary_error}; official CPI republication failed: {mirror_error}") from mirror_error
+        else:
+            rows = json.loads(raw)
+            if rows[0]["status"] != "SUCCESS":
+                raise ValueError("StatCan request unsuccessful")
+            points = rows[0]["object"]["vectorDataPoint"]
+            df = pd.DataFrame([{"obs_date": p["refPer"], "value": float(p["value"])} for p in points])
     else:
-        rows = json.loads(request("https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods",
-                                  [{"vectorId": 41690973, "latestN": 24}]))
-        if rows[0]["status"] != "SUCCESS":
-            raise ValueError("StatCan request unsuccessful")
-        points = rows[0]["object"]["vectorDataPoint"]
-        df = pd.DataFrame([{"obs_date": p["refPer"], "value": float(p["value"])} for p in points])
+        raise ValueError(f"Unknown source: {name}")
     df["obs_date"] = pd.to_datetime(df.obs_date)
     df = df.dropna().sort_values("obs_date").drop_duplicates("obs_date", keep="last")
     df = df[(df.obs_date <= today) & (df.obs_date >= start)]
@@ -87,7 +148,7 @@ def refresh(existing, today):
     Daily history through the previous successful cache is immutable. Refresh the
     last 14 calendar days only; older revisions never silently rewrite the seed.
     """
-    results, errors = {}, {}
+    results, errors, source_access = {}, {}, {}
     starts = {n: str((min(today, existing[existing.series == n].obs_date.max())
                       - pd.Timedelta(days=730 if n.endswith("cpi") else 14)).date()) for n in SOURCE_INFO}
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -97,6 +158,8 @@ def refresh(existing, today):
             n = jobs[f]
             try:
                 results[n] = f.result()
+                if results[n].attrs.get("source_access"):
+                    source_access[n] = results[n].attrs["source_access"]
             except Exception as exc:
                 errors[n] = f"{type(exc).__name__}: {str(exc)[:180]}"
     out = existing.copy()
@@ -117,4 +180,5 @@ def refresh(existing, today):
         df["series"] = n
         out = pd.concat([out, df[out.columns]], ignore_index=True)
     out = out.sort_values(["series", "available_date", "obs_date"]).drop_duplicates(["series", "obs_date", "available_date"], keep="last")
+    out.attrs["source_access"] = source_access
     return out, errors, sorted(results)
