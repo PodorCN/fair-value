@@ -54,9 +54,11 @@ and pushes the generated files. Only these change during a routine data update:
 - `USDCAD/data/dashboard.json`: precomputed valuation, history and portfolio data.
 - `USDCAD/data/update-status.json`: latest attempt's success, partial or failure.
 
-The **Deploy fair-value dashboard to Cloudflare** workflow publishes `USDCAD/dist`
-when frontend or data files are pushed to `main`. Its Cloudflare Pages deployment
-publishes webpage and data together. The project site uses relative URLs, so it
+The Cloudflare Pages GitHub integration publishes `USDCAD/dist` when frontend or
+data files are pushed to `main`. The **Verify fair-value dashboard** workflow
+checks tests, build, the served snapshot, and live source health in separate
+steps. A source-health failure can occur after successful publication; a red run
+alone does not mean the site failed to deploy. The project uses relative URLs, so it
 works at `/fair-value/` without hard-coded root paths.
 
 The **Update USDCAD fair value** workflow is a manually dispatchable fallback
@@ -68,17 +70,10 @@ Hosting metadata is in `cloudflare.json`: Pages project `podor-fair-value`,
 production branch `main`, zone `podor.org`, custom domain `fv.podor.org`.
 GitHub stores code and calculated data; GitHub Pages is not used.
 
-The deploy workflow uses the existing `CLOUDFLARE_API_TOKEN` repository secret
-(also accepts `CF_API_TOKEN`, `CLOUDFLARE_TOKEN` or `CF_TOKEN`). Its token needs
-Cloudflare Pages Edit on the account and Zone Read / DNS Edit for `podor.org`.
-The account ID is discovered from that zone; an optional
-`CLOUDFLARE_ACCOUNT_ID` secret or variable can constrain it. Never commit these
-credentials or send them to the frontend. If no credential is available, the
-workflow fails explicitly before creating a project or changing DNS.
-
-Deployment reuses or creates the Pages project, uploads the static bundle,
-associates the custom domain and adds its CNAME. It preserves unrelated DNS and
-TXT records and verifies that HTTPS serves the exact built snapshot. The data
+The configured Pages GitHub integration is the publisher; verification Actions
+do not create projects, change DNS or require a Cloudflare credential. The
+one-off `scripts/cloudflare.mjs prepare`/`bind` operator tools are not part of
+the daily update or verification path. Do not wire them back into CI. The data
 updater separately needs permission to commit to the branch; branch protection
 may require a repository-specific adaptation.
 

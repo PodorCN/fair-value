@@ -1,4 +1,9 @@
 import assert from 'node:assert/strict';
+import { verifyPublication, verifySourceHealth } from './smoke-checks.mjs';
+
+const mode = process.argv[2] || '--all';
+assert(['--all', '--publication-only', '--source-health'].includes(mode), 'Unknown smoke mode');
+assert(process.argv.length <= 3, 'Unexpected smoke arguments');
 
 const origin = (process.env.USDCAD_FRONTEND_URL || 'http://127.0.0.1:4173').replace(/\/$/, '') + '/';
 async function get(url, options = {}) {
@@ -18,10 +23,8 @@ if (apiMode) {
   assert.equal(response.headers.get('cache-control'), 'no-store');
 }
 const snapshot = await response.json();
-assert.equal(snapshot.schema_version, 1);
-assert(snapshot.latest.beer_fv > 0 && snapshot.history.length > 1000);
 const status = await (await get(new URL(config.statusUrl, origin))).json();
-assert.equal(status.result, 'success', `Last backend update was ${status.result}`);
+verifyPublication(snapshot, status);
 if (apiMode) {
   const absent = await fetch(new URL('data/dashboard.json', origin));
   assert.equal(absent.status, 404, 'API frontend must not bundle a static data fallback');
@@ -30,5 +33,9 @@ if (apiMode) {
   const app = await (await get(new URL('app.js', origin))).text();
   assert.match(app, /setInterval\(load, 300000\)/);
 }
-console.log(`PASS: frontend ${origin} → ${apiMode ? 'API backend' : 'published JSON'} ${dashboardUrl}`);
-console.log(`Update ${status.result} · ${status.sources_fetched.length} sources · valuation ${snapshot.valuation_date} · BEER ${snapshot.latest.beer_fv}`);
+console.log(`PASS PUBLICATION: frontend ${origin} serves ${apiMode ? 'API backend' : 'published JSON'} ${dashboardUrl}`);
+console.log(`Published ${snapshot.generated_at}; update ${status.result}; mode ${snapshot.mode}; health ${snapshot.health}; valuation ${snapshot.valuation_date}`);
+if (mode !== '--publication-only') {
+  verifySourceHealth(snapshot, status);
+  console.log(`PASS SOURCE HEALTH: all ${status.sources_fetched.length} sources fetched; health ${snapshot.health}`);
+}

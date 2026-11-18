@@ -1,8 +1,8 @@
 # Daily agent update
 
 The user will arrange the agent's daily schedule. This document is the job
-procedure, not a created hosted automation. One agent updates data; GitHub
-Actions deploys the static frontend to Cloudflare Pages after the push. No API
+procedure, not a created hosted automation. One agent updates data; the Cloudflare
+Pages GitHub integration deploys the static frontend after the push. No API
 server is needed. The custom domain is `fv.podor.org`.
 
 1. Read the repository and USDCAD `AGENT.MD` files. Start on a clean checkout
@@ -38,8 +38,15 @@ server is needed. The custom domain is `fv.podor.org`.
 6. The Cloudflare Pages GitHub integration builds the project named in
    `cloudflare.json` and publishes it on the data push. The **Verify fair-value
    dashboard** run re-runs the tests, waits for `https://fv.podor.org` to serve the
-   pushed `generated_at`, then runs the smoke test. A red run means the snapshot
-   never reached the domain, not that a deploy step was skipped.
+   pushed `generated_at`, then checks publication and live source health in
+   separate steps. A red run alone does not identify which failed: a partial
+   snapshot may already be live while the source-health step fails. Inspect the
+   individual steps and served JSON before reporting publication status.
+   `npm run smoke -- --publication-only` permits visibly degraded/cached or
+   retained snapshots but does not call them fresh. `npm run smoke` (the default)
+   and `npm run smoke -- --source-health` require a successful live fetch of all
+   eleven sources and fresh source/valuation health. These gates stay red for
+   partial, failed, cached or stale data.
 7. Verify the published `data/dashboard.json` has the expected `generated_at`
    and `valuation_date`. Report the data date, source health and deployment URL.
 
@@ -48,6 +55,16 @@ minutes, using cache-busting URLs. New dates extend the date selector and chart
 range automatically. A user viewing the latest observation follows new data;
 a pinned historical date stays pinned. Cloudflare can cache files briefly,
 so publication is measured by the deployed artifact and served payload.
+
+If Statistics Canada refuses the configured public WDS request with HTTP 403,
+retain the cached CPI observations and the explicit source error. Do not change
+the selected `v41690973` series, rebase the index, backdate first-seen values,
+rotate request identities or treat a cached calculation as source recovery.
+Permanent HTTP refusals fail immediately; only transient HTTP/network failures
+receive the existing bounded retry. Recovery requires a successful authorized
+read of that source (with observed reference dates), followed by the normal
+calculation, validation and publication procedure. A code/test pass does not
+establish that provider access has recovered.
 
 The manual **Update USDCAD fair value** workflow implements the same calculation
 and commit procedure when needed. Its completion also triggers the verification

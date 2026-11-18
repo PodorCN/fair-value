@@ -8,7 +8,9 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from io import StringIO
 import json
+import ssl
 import time
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 import pandas as pd
@@ -36,7 +38,15 @@ def request(url: str, payload=None):
         try:
             with urlopen(Request(url, data=body, headers=headers), timeout=25) as res:
                 return res.read().decode("utf-8-sig")
-        except Exception:
+        except HTTPError as exc:
+            # Access refusals are not transient outages. Preserve the refusal;
+            # never switch identity, host or data series to get around it.
+            if exc.code not in {408, 429, 500, 502, 503, 504} or attempt == 2:
+                raise
+            time.sleep(attempt + 1)
+        except (URLError, TimeoutError) as exc:
+            if isinstance(getattr(exc, "reason", None), (ssl.SSLError, PermissionError)):
+                raise
             if attempt == 2:
                 raise
             time.sleep(attempt + 1)

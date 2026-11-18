@@ -80,4 +80,10 @@ jobs:
       - name: Verify publication through the custom domain
         env:
           USDCAD_FRONTEND_URL: https://fv.podor.org
-        run: npm run smoke
+        run: npm run smoke -- --publication-only
+      # A partial source fetch can already be published. Keep this strict gate
+      # separate so a source failure cannot be misreported as a failed deployment.
+      - name: Verify live source health and freshness
+        env:
+          USDCAD_FRONTEND_URL: https://fv.podor.org
+        run: npm run smoke -- --source-health
