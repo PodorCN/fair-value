@@ -106,6 +106,12 @@ def make_snapshot(obs, training, today, mode, errors, successes, provenance):
     monthly_cols = ["date", "data_through", "execution_date", "spot", "beer_fv", "ppp_fv", "beer_z", "peer_z",
                     "layer1_tier", "layer2_tier", "layer1_usd", "layer2_usd", "usd_weight", "ppp_state"]
     source_rows = []
+    access_this_run = obs.attrs.get("source_access_this_run", {})
+    origins = obs.attrs.get("observation_access", [])
+    def origin_for(name, row):
+        return next((o for o in origins if o["series"] == name
+                     and o["obs_date"] == str(row.obs_date.date()) and o["available_date"] == str(row.available_date.date())
+                     and float(o["value"]) == float(row.value)), None)
     for name, info in SOURCE_INFO.items():
         g = obs[(obs.series == name) & (obs.available_date <= today)].sort_values(["obs_date", "available_date"])
         r = g.iloc[-1]
@@ -113,13 +119,16 @@ def make_snapshot(obs, training, today, mode, errors, successes, provenance):
         used = used.iloc[-1]
         age = len(pd.bdate_range(r.obs_date, today)) - 1
         stale = age > (65 if name.endswith("cpi") else 7)
-        source_rows.append({**info, **obs.attrs.get("source_access", {}).get(name, {}),
+        access = obs.attrs.get("source_access", {}).get(name, {})
+        retained = {"access_scope": "current_fetch" if name in access_this_run else "retained_last_success"} if access else {}
+        source_rows.append({**info, **access, **retained,
                             "name": name, "observation_date": r.obs_date, "available_date": r.available_date,
                             "value": r.value, "age_business_days": age,
                             "valuation_observation_date": used.obs_date,
                             "valuation_available_date": used.available_date, "valuation_value": used.value,
                             "status": "error" if name in errors else "stale" if stale else "ok",
-                            "error": errors.get(name), "fetched_this_run": name in successes})
+                            "error": errors.get(name), "fetched_this_run": name in successes,
+                            "observation_access": origin_for(name, r), "valuation_observation_access": origin_for(name, used)})
     lag = len(pd.bdate_range(aligned_date, today)) - 1
     stale = lag > 7 or any(s["status"] == "stale" for s in source_rows)
     # Explain a 21-business-day change in RAW OLS FV exactly, including any annual refit.
@@ -139,10 +148,15 @@ def make_snapshot(obs, training, today, mode, errors, successes, provenance):
     if errors:
         notices.append({"severity": "warning", "title": "Partial source failure", "detail": "Cached observations retained for: " + ", ".join(errors)})
     for name, access in obs.attrs.get("source_access", {}).items():
-        notices.append({"severity": "warning", "title": "Official CPI republication",
-                        "detail": f"{name}: identical {SOURCE_INFO[name]['series_id']} index read from Bank of Canada; "
-                                  f"Statistics Canada direct access failed ({access['primary_error']}). "
-                                  "The original endpoint has not recovered. New or revised CPI values use first-fetch availability dates."})
+        if access.get("access_method") != "official-republication":
+            continue
+        current = name in access_this_run
+        detail = (f"This run read {SOURCE_INFO[name]['series_id']} from Bank of Canada; Statistics Canada direct access failed "
+                  if current else f"Retained {SOURCE_INFO[name]['series_id']} cache was last verified via Bank of Canada at {access['retrieved_at_utc']}; prior direct failure ")
+        notices.append({"severity": "warning", "title": "Official CPI republication" if current else "Retained CPI provenance",
+                        "detail": detail + f"({access['primary_error']}). " +
+                                  ("The original endpoint has not recovered in this run. " if current else "No successful CPI fetch occurred in this run; this historical record does not establish current endpoint state. ") +
+                                  "New or revised CPI values use first-fetch availability dates."})
     if row.layer1_tier * row.layer2_tier < 0:
         notices.append({"severity": "info", "title": "Layers disagree", "detail": "Macro valuation and commodity peers point in opposite directions; the selected model averages the two allocations."})
     if row.vix_z > 2:
@@ -157,6 +171,7 @@ def make_snapshot(obs, training, today, mode, errors, successes, provenance):
                   "history": history, "monthly": monthly[monthly_cols].to_dict("records"),
                   "drivers": drivers, "raw_fv_change_log_bp": raw_change, "refit_change_log_bp": refit_change,
                   "sources": source_rows, "notices": notices, "ppp_calibration": ppp,
+                  "source_access": obs.attrs.get("source_access", {}), "observation_access": origins,
                   "coefficients": fits.rename_axis("date").reset_index().to_dict("records"),
                   "provenance": provenance,
                   "methodology": {"name": "Two-layer allocation · revision 18", "train_bd": 756, "z_bd": 252,
@@ -192,15 +207,19 @@ def update(data_dir=ROOT / "data", live=True, as_of=None):
                     raise RuntimeError("All live sources failed; keeping last published snapshot: " + json.dumps(errors))
             snapshot = make_snapshot(obs, training, today, "live" if live else "cached", errors, successes, provenance)
             raw = obs.to_csv(index=False, lineterminator="\n")
-            snapshot["observations_sha256"] = hashlib.sha256(raw.encode()).hexdigest()
+            snapshot["observations_sha256"] = hashlib.sha256(raw.encode() if live else (data_dir / "observations.csv").read_bytes()).hexdigest()
             body = json_text(snapshot)  # Validate all JSON before touching publication files.
             if len(snapshot["history"]) < 1000 or snapshot["latest"]["beer_fv"] <= 0:
                 raise ValueError("Invalid dashboard payload")
             status = {"started_at": started, "finished_at": datetime.now(timezone.utc).isoformat(),
                       "result": "partial" if errors else "success", "mode": snapshot["mode"],
                       "valuation_date": snapshot["valuation_date"], "errors": errors, "sources_fetched": successes}
-            if obs.attrs.get("source_access"):
-                status["source_access"] = obs.attrs["source_access"]
+            if obs.attrs.get("source_access_this_run"):
+                status["source_access"] = obs.attrs["source_access_this_run"]
+            retained_access = {n: a for n, a in obs.attrs.get("source_access", {}).items()
+                               if n not in obs.attrs.get("source_access_this_run", {})}
+            if retained_access:
+                status["retained_source_access"] = retained_access
             if live:
                 atomic_write(data_dir / "observations.csv", raw)
             atomic_write(data_dir / "dashboard.json", body)

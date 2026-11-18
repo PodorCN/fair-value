@@ -36,7 +36,7 @@ if (apiMode) {
 console.log(`PASS PUBLICATION: frontend ${origin} serves ${apiMode ? 'API backend' : 'published JSON'} ${dashboardUrl}`);
 console.log(`Published ${snapshot.generated_at}; update ${status.result}; mode ${snapshot.mode}; health ${snapshot.health}; valuation ${snapshot.valuation_date}`);
 for (const source of snapshot.sources.filter(s => s.access_method === 'official-republication')) {
-  console.log(`SOURCE PROVENANCE: ${source.series_id} via ${source.provider}; direct ${source.original_provider}: ${source.primary_error}`);
+  console.log(`SOURCE PROVENANCE (snapshot ${snapshot.generated_at}, ${source.access_scope}): ${source.series_id} via ${source.provider} at ${source.retrieved_at_utc}; recorded direct ${source.original_provider}: ${source.primary_error}`);
 }
 if (mode !== '--publication-only') {
   verifySourceHealth(snapshot, status);

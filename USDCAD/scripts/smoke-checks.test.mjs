@@ -24,7 +24,7 @@ function republicationFixture() {
     primary_error: 'HTTPError: HTTP Error 403: Forbidden', retrieved_at_utc: '2026-11-18T00:11:21Z',
     unit: 'Index (2002=100)', frequency: 'Monthly', seasonal_adjustment: 'NSA',
   };
-  Object.assign(snapshot.sources[0], access, { name: 'ca_cpi', series_id: 'v41690973' });
+  Object.assign(snapshot.sources[0], access, { name: 'ca_cpi', series_id: 'v41690973', access_scope: 'current_fetch' });
   status.sources_fetched[0] = 'ca_cpi';
   status.source_access = { ca_cpi: { ...access } };
   snapshot.notices = [{ title: 'Official CPI republication', detail: `Bank of Canada copy; direct endpoint failed: ${access.primary_error}` }];
@@ -143,4 +143,36 @@ test('republication cannot disappear from the notice or update-status access rec
   const retained = republicationFixture(); retained.status = { result: 'failed', error: 'Synthetic fatal failure' };
   verifyPublication(retained.snapshot, retained.status);
   assert.throws(() => verifySourceHealth(retained.snapshot, retained.status), /SOURCE HEALTH.*failed/);
+});
+test('retained CPI provenance survives cached and failed-source publications without a fresh-fetch claim', () => {
+  for (const mode of ['cached', 'partial']) {
+    const { snapshot, status } = republicationFixture();
+    const source = snapshot.sources[0];
+    source.access_scope = 'retained_last_success'; source.fetched_this_run = false;
+    status.retained_source_access = status.source_access; delete status.source_access;
+    status.sources_fetched.shift();
+    snapshot.notices[0].title = 'Retained CPI provenance';
+    if (mode === 'cached') { snapshot.mode = status.mode = 'cached'; snapshot.health = 'cached'; }
+    else {
+      status.result = 'partial'; snapshot.health = 'degraded';
+      status.errors = { ca_cpi: 'Current StatCan HTTP403; mirror HTTP503' };
+      source.status = 'error'; source.error = status.errors.ca_cpi;
+    }
+    const originalTime = source.retrieved_at_utc;
+    verifyPublication(snapshot, status);
+    assert.equal(source.retrieved_at_utc, originalTime);
+    assert.throws(() => verifySourceHealth(snapshot, status), /SOURCE HEALTH/);
+    source.fetched_this_run = true;
+    assert.throws(() => verifyPublication(snapshot, status));
+  }
+});
+test('direct recovery does not inherit the previous mirror failure declaration', () => {
+  const { snapshot, status } = fixture();
+  Object.assign(snapshot.sources[0], { name: 'ca_cpi', provider: 'Statistics Canada', access_method: 'direct',
+    access_scope: 'current_fetch', data_url: 'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods',
+    retrieved_at_utc: '2026-11-18T00:01:00Z', observation_access: { kind: 'first_seen_fetch', access: { provider: 'Bank of Canada', primary_error: 'historical 403' } } });
+  status.sources_fetched[0] = 'ca_cpi';
+  verifySourceHealth(snapshot, status);
+  snapshot.sources[0].primary_error = 'historical 403';
+  assert.throws(() => verifyPublication(snapshot, status), /must not inherit/);
 });

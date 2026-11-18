@@ -6,9 +6,11 @@ the first successful fetch, so later releases cannot rewrite historical signals.
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from datetime import datetime, timezone
 from io import StringIO
 import json
+import hashlib
 import math
 import re
 import ssl
@@ -29,10 +31,51 @@ SOURCE_INFO = {**{k: {"provider": "FRED", "series_id": v,
 STATCAN_CPI_URL = "https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods"
 BOC_CPI_URL = "https://www.bankofcanada.ca/valet/observations/group/CPI_MONTHLY/json"
 BOC_CPI_PAGE = "https://www.bankofcanada.ca/rates/price-indexes/cpi/"
+ACCESS_FIELDS = {"provider", "url", "data_url", "access_method", "mirror_series_id", "unit", "frequency",
+                 "seasonal_adjustment", "original_provider", "original_url", "primary_endpoint",
+                 "primary_error", "retrieved_at_utc"}
 
 
 def read_observations(path):
-    return pd.read_csv(path, parse_dates=["obs_date", "available_date"])
+    from pathlib import Path
+    path = Path(path)
+    obs = pd.read_csv(path, parse_dates=["obs_date", "available_date"])
+    previous = path.with_name("dashboard.json")
+    if previous.exists():
+        snapshot = json.loads(previous.read_text(encoding="utf-8"))
+        accesses = snapshot.get("source_access", {})
+        if not isinstance(accesses, dict):
+            raise ValueError("Invalid persisted CPI source provenance")
+        # Migrate v2 snapshots that only carried access metadata in source rows.
+        if "source_access" not in snapshot:
+            accesses = {s["name"]: {k: s[k] for k in ACCESS_FIELDS if k in s}
+                        for s in snapshot.get("sources", []) if s.get("access_method") in {"direct", "official-republication"}}
+        origins = snapshot.get("observation_access", [])
+        if not isinstance(accesses, dict) or not isinstance(origins, list):
+            raise ValueError("Invalid persisted CPI source provenance")
+        if accesses or origins:
+            raw_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+            canonical_hash = hashlib.sha256(obs.to_csv(index=False, lineterminator="\n").encode()).hexdigest()
+            if snapshot.get("observations_sha256") not in {raw_hash, canonical_hash}:
+                raise ValueError("Persisted source provenance does not match observations.csv; reconciliation required")
+            if (not isinstance(accesses, dict) or any(n != "ca_cpi" or not isinstance(a, dict)
+                    or set(a) - ACCESS_FIELDS for n, a in accesses.items()) or not isinstance(origins, list)):
+                raise ValueError("Invalid persisted CPI source provenance")
+            known = {observation_key(r.series, r.obs_date, r.available_date, r.value) for r in obs.itertuples()}
+            for origin in origins:
+                if (origin.get("series") != "ca_cpi" or origin.get("kind") != "first_seen_fetch"
+                        or observation_key(origin["series"], origin["obs_date"], origin["available_date"], origin["value"]) not in known
+                        or not isinstance(origin.get("access"), dict) or set(origin["access"]) - ACCESS_FIELDS):
+                    raise ValueError("Persisted CPI observation provenance has no matching observation")
+            obs.attrs["source_access"] = deepcopy(accesses)
+            obs.attrs["observation_access"] = deepcopy(origins)
+    # Never restore current-run success/error flags from the prior snapshot.
+    obs.attrs["source_access_this_run"] = {}
+    return obs
+
+
+def observation_key(series, obs_date, available_date, value):
+    return (series, str(pd.Timestamp(obs_date).date()), str(pd.Timestamp(available_date).date()), float(value).hex())
 
 
 def request(url: str, payload=None):
@@ -130,6 +173,12 @@ def fetch(name, start, today):
                 raise ValueError("StatCan request unsuccessful")
             points = rows[0]["object"]["vectorDataPoint"]
             df = pd.DataFrame([{"obs_date": p["refPer"], "value": float(p["value"])} for p in points])
+            df.attrs["source_access"] = {
+                "provider": "Statistics Canada", "url": SOURCE_INFO["ca_cpi"]["url"],
+                "data_url": STATCAN_CPI_URL, "access_method": "direct",
+                "unit": "Index (2002=100)", "frequency": "Monthly", "seasonal_adjustment": "NSA",
+                "retrieved_at_utc": datetime.now(timezone.utc).isoformat(),
+            }
     else:
         raise ValueError(f"Unknown source: {name}")
     df["obs_date"] = pd.to_datetime(df.obs_date)
@@ -148,7 +197,10 @@ def refresh(existing, today):
     Daily history through the previous successful cache is immutable. Refresh the
     last 14 calendar days only; older revisions never silently rewrite the seed.
     """
-    results, errors, source_access = {}, {}, {}
+    results, errors = {}, {}
+    source_access = deepcopy(existing.attrs.get("source_access", {}))
+    current_access = {}
+    origins = deepcopy(existing.attrs.get("observation_access", []))
     starts = {n: str((min(today, existing[existing.series == n].obs_date.max())
                       - pd.Timedelta(days=730 if n.endswith("cpi") else 14)).date()) for n in SOURCE_INFO}
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -160,6 +212,9 @@ def refresh(existing, today):
                 results[n] = f.result()
                 if results[n].attrs.get("source_access"):
                     source_access[n] = results[n].attrs["source_access"]
+                    current_access[n] = results[n].attrs["source_access"]
+                else:
+                    source_access.pop(n, None)  # Never inherit stale attribution for a new successful read.
             except Exception as exc:
                 errors[n] = f"{type(exc).__name__}: {str(exc)[:180]}"
     out = existing.copy()
@@ -171,6 +226,13 @@ def refresh(existing, today):
             df = df[df.apply(lambda r: r.obs_date not in last or abs(last.loc[r.obs_date] - r.value) > 1e-9, axis=1)].copy()
             df["available_date"] = today
             df["rule"] = "realtime"
+            if n in current_access:
+                for row in df.itertuples():
+                    entry = {"series": n, "obs_date": str(row.obs_date.date()), "available_date": str(today.date()),
+                             "value": float(row.value), "kind": "first_seen_fetch", "access": deepcopy(current_access[n])}
+                    key = observation_key(n, row.obs_date, today, row.value)
+                    origins = [o for o in origins if observation_key(o["series"], o["obs_date"], o["available_date"], o["value"]) != key]
+                    origins.append(entry)
         else:
             # Use the same daily publication assumption as the paper, retain actual obs dates.
             df = df.copy()
@@ -181,4 +243,7 @@ def refresh(existing, today):
         out = pd.concat([out, df[out.columns]], ignore_index=True)
     out = out.sort_values(["series", "available_date", "obs_date"]).drop_duplicates(["series", "obs_date", "available_date"], keep="last")
     out.attrs["source_access"] = source_access
+    out.attrs["source_access_this_run"] = current_access
+    known = {observation_key(r.series, r.obs_date, r.available_date, r.value) for r in out.itertuples()}
+    out.attrs["observation_access"] = [o for o in origins if observation_key(o["series"], o["obs_date"], o["available_date"], o["value"]) in known]
     return out, errors, sorted(results)

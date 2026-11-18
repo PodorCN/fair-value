@@ -31,6 +31,10 @@ export function verifyPublication(snapshot, status) {
     }
   }
   for (const source of snapshot.sources) {
+    if (source.access_method) {
+      assert(['current_fetch', 'retained_last_success'].includes(source.access_scope), 'Source access must distinguish this run from retained provenance');
+      assert.equal(source.fetched_this_run, source.access_scope === 'current_fetch', 'Retained provenance cannot claim a current fetch');
+    }
     if (source.access_method === 'official-republication') {
       const url = new URL(source.data_url);
       assert(source.name === 'ca_cpi' && source.series_id === 'v41690973' && source.mirror_series_id === 'V41690973'
@@ -40,14 +44,22 @@ export function verifyPublication(snapshot, status) {
         && source.primary_endpoint === 'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods'
         && typeof source.primary_error === 'string' && source.primary_error.includes('403')
         && Number.isFinite(Date.parse(source.retrieved_at_utc)), 'Official CPI republication must preserve identity, definition and direct-source failure');
-      assert(snapshot.notices.some(n => n.title === 'Official CPI republication' && n.detail.includes(source.primary_error)),
+      const title = source.access_scope === 'current_fetch' ? 'Official CPI republication' : 'Retained CPI provenance';
+      assert(snapshot.notices.some(n => n.title === title && n.detail.includes(source.primary_error)),
         'Official CPI republication must visibly disclose the direct-source failure');
       if (status.result !== 'failed') {
-        const access = status.source_access?.[source.name];
+        const bucket = source.access_scope === 'current_fetch' ? status.source_access : status.retained_source_access;
+        const access = bucket?.[source.name];
         assert(access && Object.keys(access).every(k => source[k] === access[k])
           && access.primary_error === source.primary_error && access.data_url === source.data_url,
         'Status must preserve the actual CPI republication access record');
       }
+    }
+    if (source.access_method === 'direct') {
+      assert(source.name === 'ca_cpi' && source.provider === 'Statistics Canada'
+        && source.data_url === 'https://www150.statcan.gc.ca/t1/wds/rest/getDataFromVectorsAndLatestNPeriods'
+        && !source.primary_error && Number.isFinite(Date.parse(source.retrieved_at_utc)),
+      'Direct recovery must not inherit an old republication failure');
     }
   }
   return { result: status.result, mode: snapshot.mode, health: snapshot.health };

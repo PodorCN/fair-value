@@ -117,6 +117,7 @@ class CPIRepublicationTests(unittest.TestCase):
         access = self.mirror().attrs['source_access']
         obs = read_observations(ROOT / 'data/observations.csv')
         obs.attrs['source_access'] = {'ca_cpi': access}
+        obs.attrs['source_access_this_run'] = {'ca_cpi': access}
         with tempfile.TemporaryDirectory(prefix='usdcad-republication-') as directory:
             target = Path(directory)
             for name in ('observations.csv', 'ppp_training.csv', 'provenance.json'):

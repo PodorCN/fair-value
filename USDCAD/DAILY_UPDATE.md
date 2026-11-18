@@ -78,6 +78,22 @@ The fatal updater status has `result: "failed"` and a singular nonempty `error`;
 it has no source `errors` map, mode or valuation date. Publication verification
 allows the retained dashboard with this real schema, while source health fails.
 
+Successful CPI access metadata persists in `dashboard.json.source_access`, bound
+to the snapshot's observations checksum. New/revised CPI records also retain
+their acquisition metadata in `observation_access`, keyed to the actual reference
+month, first-seen date and value; the CSV schema and model availability policy do
+not change. Reading observations restores historical provenance, never a prior
+`fetched_this_run` flag. Cached calculations and failed CPI refreshes mark access
+as `retained_last_success`, keep the original retrieval timestamp and rejection
+record, and put it in `update-status.retained_source_access`. Current successes
+use `current_fetch` and `update-status.source_access`. Current fetch errors remain
+separate. A later direct StatCan success replaces the current route and removes
+the current mirror-failure notice, while earlier first-seen acquisition records
+remain historical. A mismatched CSV/provenance snapshot fails closed for manual
+reconciliation rather than silently relabeling the data. Publish these records
+inside the existing dashboard/status files; no additional scheduled writer or
+publication file is introduced.
+
 The manual **Update USDCAD fair value** workflow implements the same calculation
 and commit procedure when needed. Its completion also triggers the verification
 workflow, because GitHub suppresses push-triggered workflows for `GITHUB_TOKEN`
